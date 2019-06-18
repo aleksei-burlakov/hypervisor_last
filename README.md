@@ -1,11 +1,16 @@
-In this repo , collect all features in our OS.
-And some try or new idea in development.
+# README #
 
+### How to set up in Linux ###
 
+In order to start it your system must support graphics. If you connect remotelly make sure to use ssh -Y.
 
-hypervisor_last
-===============
+To compile the project do
 
-upstream development the newest feature about HV.
+$ zypper in -y glibc-devel-32bit
+$ make
 
+### How to run ###
 
+$ make run.x86
+
+All targets are listed in buildrules/linker.rules. You can also run it with debugging and for other architectures.
