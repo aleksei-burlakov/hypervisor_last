@@ -1,5 +1,18 @@
 # README #
 
+hello os for study
+
+
+helloos.lds         ld script
+
+helloos.s           boot start file. in the entry point of system.
+
+Makefile            Makefile
+
+README.md           ReadMe file
+
+\"lowinit\_init.s\_\"   low level initialzation
+
 ### How to set up in Linux ###
 
 In order to start it your system must support graphics. If you connect remotelly make sure to use ssh -Y.
