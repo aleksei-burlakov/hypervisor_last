@@ -1,14 +1,20 @@
-In this repo , collect all features in our OS.
-And some try or new idea in development.
+# README #
+
+hello os for study
 
 
+helloos.lds         ld script
 
-hypervisor_last
-===============
+helloos.s           boot start file. in the entry point of system.
 
-upstream development the newest feature about HV.
+Makefile            Makefile
 
+README.md           ReadMe file
 
+\"lowinit\_init.s\_\"   low level initialzation
+
+All targets are listed in buildrules/linker.rules. You can also run it with debugging and for other architectures.
+=======
 * Require Packages
   * openSUSE TW
 
@@ -24,4 +30,16 @@ upstream development the newest feature about HV.
   `make run.x86`
 ~~~~
 
+### How to set up in Linux ###
+
+In order to start it your system must support graphics. If you connect remotelly make sure to use ssh -Y.
+
+To compile the project do
+
+$ zypper in -y glibc-devel-32bit
+$ make
+
+### How to run ###
+
+$ make run.x86
 
