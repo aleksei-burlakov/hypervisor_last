@@ -13,6 +13,23 @@ README.md           ReadMe file
 
 \"lowinit\_init.s\_\"   low level initialzation
 
+All targets are listed in buildrules/linker.rules. You can also run it with debugging and for other architectures.
+=======
+* Require Packages
+  * openSUSE TW
+
+* Build
+
+~~~~
+  `make`
+~~~~
+
+* Run Hypervisor
+
+~~~~
+  `make run.x86`
+~~~~
+
 ### How to set up in Linux ###
 
 In order to start it your system must support graphics. If you connect remotelly make sure to use ssh -Y.
@@ -26,4 +43,3 @@ $ make
 
 $ make run.x86
 
-All targets are listed in buildrules/linker.rules. You can also run it with debugging and for other architectures.
