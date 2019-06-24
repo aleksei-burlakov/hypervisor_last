@@ -43,3 +43,7 @@ $ make
 
 $ make run.x86
 
+### TODO ###
+
+1. memory management, for now, I use "segment", not use "page", because I don't very familiar with it and the last hackweek I did some else project. But It must be used in the future. 
+2. Interrupt of the timer, it is basic of the scheduler, but due to we need a good memory module design. so might be it is hard to integrate into our code.

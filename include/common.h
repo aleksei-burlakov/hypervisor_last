@@ -54,28 +54,26 @@ void load_idtr(int limit, int addr);
 
 /*8259 interrupt controller*/
 
-#define PIC0    0x20
-#define PIC1    0xa0
-#define PIC0_OCW1				PIC0+1
-#define PIC0_OCW2				PIC0
-#define PIC1_OCW1    		PIC1+1
-#define PIC1_OCW2    		PIC1
-#define PIC0_IMR				PIC0_OCW1
-#define PIC1_IMR				PIC1_OCW1    		
-#define PIC0_ICW1				PIC0
-#define PIC1_ICW1				PIC1
-#define PIC0_ICW2				PIC0+1
-#define PIC1_ICW2				PIC1+1
-#define PIC0_ICW3				PIC0+1
-#define PIC1_ICW3				PIC1+1
-#define PIC0_ICW4				PIC0+1
-#define PIC1_ICW4				PIC1+1
+#define PIC0            0x20
+#define PIC1            0xa0
+#define PIC0_OCW1       PIC0+1
+#define PIC0_OCW2		PIC0
+#define PIC1_OCW1    	PIC1+1
+#define PIC1_OCW2       PIC1
+#define PIC0_IMR		PIC0_OCW1
+#define PIC1_IMR		PIC1_OCW1    		
+#define PIC0_ICW1		PIC0
+#define PIC1_ICW1		PIC1
+#define PIC0_ICW2		PIC0+1
+#define PIC1_ICW2		PIC1+1
+#define PIC0_ICW3		PIC0+1
+#define PIC1_ICW3		PIC1+1
+#define PIC0_ICW4		PIC0+1
+#define PIC1_ICW4		PIC1+1
 #define PIC0_COMMAND    PIC0
 #define PIC0_DATA       (PIC0+1)
 #define PIC1_COMMAND    PIC1
 #define PIC1_DATA       (PIC1+1)
-
-
 
 /*GDT / IDT data*/
 
@@ -102,3 +100,6 @@ struct mouse_info {
 void draw_mouse_on_screen(struct mouse_info*);
 void init_mouse_cursor8(char *, char);
 extern char scancode [];
+
+#define VGA_X_MAX 320
+#define VGA_Y_MAX 200

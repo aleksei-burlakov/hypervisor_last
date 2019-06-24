@@ -10,25 +10,21 @@ struct wjn {
 
 struct fifo key_fifo;
 struct fifo mouse_fifo;
-unsigned char keybuffer[32];
-unsigned char mousebuffer[128];
-unsigned char james_global;
 
 struct screen_postion {
     int x;
     int y;
-};
-
-struct screen_postion screen_pos = {
+} screen_pos = {
     .x = 0,
     .y = 20,
 };
 
-struct mouse_info mouse_status = {0};
+struct mouse_info mouse_status = { 0 };
 
-static void set_segmdesc(struct SEGMENT_DESCRIPTOR *sd, unsigned int limit, int base, int ar)
+static void set_segmdesc( struct SEGMENT_DESCRIPTOR *sd, unsigned int limit, int base, int ar )
 {
-    if (limit > 0xfffff) {
+    if( limit > 0xfffff )
+    {
         ar |= 0x8000; /* G_bit = 1 */
         limit /= 0x1000;
     }
@@ -38,71 +34,70 @@ static void set_segmdesc(struct SEGMENT_DESCRIPTOR *sd, unsigned int limit, int 
     sd->access_right = ar & 0xff;
     sd->limit_high   = ((limit >> 16) & 0x0f) | ((ar >> 8) & 0xf0);
     sd->base_high    = (base >> 24) & 0xff;
-    return;
 }
 
-static void set_gatedesc(struct GATE_DESCRIPTOR *gd, int offset, int selector, int ar)
+static void set_gatedesc( struct GATE_DESCRIPTOR *gd, int offset, int selector, int ar )
 {
     gd->offset_low   = offset & 0xffff;
     gd->selector     = selector;
-    gd->dw_count     = (ar >> 8) & 0xff;
+    gd->dw_count     = ( ar >> 8 ) & 0xff;
     gd->access_right = ar & 0xff;
-    gd->offset_high  = (offset >> 16) & 0xffff;
-    return;
+    gd->offset_high  = ( offset >> 16 ) & 0xffff;
 }
 
 static void init_gdtidt(void)
 {
+    /* Global descriptor table */
     struct SEGMENT_DESCRIPTOR *gdt = (struct SEGMENT_DESCRIPTOR *) (ADR_GDT - (SYSSEG << 4));
+    /* Interrupt descriptor table */
     struct GATE_DESCRIPTOR    *idt = (struct GATE_DESCRIPTOR    *) (ADR_IDT - (SYSSEG << 4));
-    //struct GATE_DESCRIPTOR    *idt = (struct GATE_DESCRIPTOR    *) ADR_IDT;
-    int i;
-    /* GDT<82>Ì<8f><89><8a>ú<89>» */
-    for (i = 0; i <= LIMIT_GDT / 8; i++) {
-        set_segmdesc(gdt + i, 0, 0, 0);
+    /* Reset GDT */
+    for( int i = 0; i <= LIMIT_GDT / 8; i++ )
+    {
+        set_segmdesc( gdt + i, 0, 0, 0 );
     }
 #if 0
-    set_segmdesc(gdt + 2, 0xffffffff,   0x00010000, AR_CODE32_ER);
-    set_segmdesc(gdt + 3, LIMIT_BOTPAK, ADR_BOTPAK, AR_DATA32_RW);
-    load_gdtr(LIMIT_GDT, ADR_GDT);
+    set_segmdesc( gdt + 2, 0xffffffff, 0x00010000, AR_CODE32_ER );
+    set_segmdesc( gdt + 3, LIMIT_BOTPAK, ADR_BOTPAK, AR_DATA32_RW );
+    load_gdtr( LIMIT_GDT, ADR_GDT );
 #endif
-    /* IDT<82>Ì<8f><89><8a>ú<89>» */
-    for (i = 0; i <= LIMIT_IDT / 8; i++) {
-        set_gatedesc(idt + i, 0xfff, 0, 0);
+    /* Reset IDT */
+    for( int i = 0; i <= LIMIT_IDT / 8; i++ )
+    {
+        set_gatedesc( idt + i, 0xfff, 0, 0 );
     }
-    load_idtr(LIMIT_IDT, ADR_IDT);
     
-    set_gatedesc(idt + 0x21, (int) inthandler21, 2 * 8, AR_INTGATE32);
-#if 1
-    /* IDT<82>Ì<90>Ý<92>è */
-    set_gatedesc(idt + 0x27, (int) inthandler27, 2 * 8, AR_INTGATE32);
-#endif
+    load_idtr(LIMIT_IDT, ADR_IDT);
 
-    set_gatedesc(idt + 0x2c, (int) inthandler2c, 2 * 8, AR_INTGATE32);
-    return;
+    /* Set the 21h, 27h and 2ch int handlers in the IDT*/
+    set_gatedesc( idt + 0x21, (int) inthandler21, 2 * 8, AR_INTGATE32 );
+    set_gatedesc( idt + 0x27, (int) inthandler27, 2 * 8, AR_INTGATE32 );
+    set_gatedesc( idt + 0x2c, (int) inthandler2c, 2 * 8, AR_INTGATE32 );
 }
 
 static void boxfill8(unsigned char *vram, int xsize, unsigned char c, int x0, int y0, int x1, int y1)
 {
-    int x, y;
-    for (y = y0; y <= y1; y++) {
-        for (x = x0; x <= x1; x++)
+    for (int y = y0; y <= y1; y++)
+    {
+        for (int x = x0; x <= x1; x++)
+        {
             vram[y * xsize + x] = c;
+        }
     }
-    return;
 }
 
-static void drawing_desktop()
+static void draw_screen()
 {
     unsigned char *vram = VRAM_ADDR;
-    unsigned short xsize,ysize;
-    xsize=320;
-    ysize=200;
+    const unsigned short xsize = VGA_X_MAX;
+    const unsigned short ysize = VGA_Y_MAX;
     char buf[50];
-    unsigned int memtotal;
+    //unsigned int memtotal;
+    /* FIXME! memman is not used, but if I comment it out
+     * there is an artifact on the screen */
     struct MEMMAN *memman = (struct MEMMAN *) (MEMMAN_ADDR - (SYSSEG << 4));
     //memman_init(memman);
-    int ret;
+    //int ret;
 
     static char font_A[16] = {
         0x00, 0x18, 0x18, 0x18, 0x18, 0x24, 0x24, 0x24,
@@ -117,7 +112,6 @@ static void drawing_desktop()
     boxfill8(vram, xsize, COL8_C6C6C6,  0,         ysize - 28, xsize -  1, ysize - 28);
     boxfill8(vram, xsize, COL8_FFFFFF,  0,         ysize - 27, xsize -  1, ysize - 27);
     boxfill8(vram, xsize, COL8_C6C6C6,  0,         ysize - 26, xsize -  1, ysize -  1);
-
 
     boxfill8(vram, xsize, COL8_FFFFFF,  3,         ysize - 24, 59,         ysize - 24);
     boxfill8(vram, xsize, COL8_FFFFFF,  2,         ysize - 24,  2,         ysize -  4);
@@ -157,12 +151,7 @@ static void drawing_desktop()
 static void wait_KBC_sendready(void)
 {
     /* Wait for the keyboard hardware to be ready */
-	for (;;) {
-		if ((io_in8(PORT_KEYSTA) & KEYSTA_SEND_NOTREADY) == 0) {
-			break;
-		}
-	}
-	return;
+	while( io_in8( PORT_KEYSTA ) & KEYSTA_SEND_NOTREADY );
 }
 
 static void init_keyboard(void)
@@ -172,7 +161,6 @@ static void init_keyboard(void)
 	io_out8(PORT_KEYCMD, KEYCMD_WRITE_MODE);
 	wait_KBC_sendready();
 	io_out8(PORT_KEYDAT, KBC_MODE);
-	return;
 }
 
 #define KEYCMD_SENDTO_MOUSE		0xd4
@@ -197,16 +185,15 @@ static void enable_mouse(void)
 	io_out8(PORT_KEYCMD, KEYCMD_SENDTO_MOUSE);
 	wait_KBC_sendready();
 	io_out8(PORT_KEYDAT, MOUSECMD_ENABLE);
-	return; /* 顺利的话，键盘控制器会返回ACK(0xfa) */
+	return; /* If successful, the keyboard controller will return ACK (0xfa) */
 }
 
 static void putfont8(char *vram, int xsize, int x, int y, char c, const unsigned char *font_bitmap)
 {
-    int i;
-    char *p, d /* data */;
-    for (i = 0; i < 16; i++) {
-        p = vram + (y + i) * xsize + x;
-        d = font_bitmap[i];
+    for( int i = 0; i < 16; i++ )
+    {
+        char* p = vram + ( y + i ) * xsize + x;
+        char d = font_bitmap[i]; /* data */
         if ((d & 0x80) != 0) { p[0] = c; }
         if ((d & 0x40) != 0) { p[1] = c; }
         if ((d & 0x20) != 0) { p[2] = c; }
@@ -216,7 +203,6 @@ static void putfont8(char *vram, int xsize, int x, int y, char c, const unsigned
         if ((d & 0x02) != 0) { p[6] = c; }
         if ((d & 0x01) != 0) { p[7] = c; }
     }
-    return;
 }
 
 
@@ -310,31 +296,41 @@ static void init_pic(void)
 
 
 #define PORT_KEYDAT 0x0060
-static void keyboard_handler(unsigned char data)
+static void keyboard_handler( unsigned char data )
 {
     unsigned char *vram = VRAM_ADDR;
-    unsigned short xsize,ysize;
+    const unsigned short xsize = VGA_X_MAX;
+    const unsigned short ysize = VGA_Y_MAX;
     unsigned char out_buffer[3];
-    unsigned char t;
-    xsize=320;
-    ysize=200;
-    if (data >= 0x81 || data == -1)
-        return ;
+    if( data >= 0x81 || data == -1 )
+    {
+        return;
+    }
     out_buffer[0] = scancode[data];
-    if (out_buffer[0] == 0) {
-#if 1
-        t=(data & 0xf0)>>4;
-        if (t >= 0xa && t <= 0xf) {
-            out_buffer[0] = 'A' + t - 10; 
-        }else {
-            out_buffer[0] = '0' + t;
+    if( out_buffer[0] == 0 )
+    {
+        const unsigned char high_nibble = ( data & 0xf0 ) >> 4;
+
+        if( high_nibble >= 0xa && high_nibble <= 0xf )
+        {
+            out_buffer[0] = 'A' + high_nibble - 10; 
         }
-        t=(data & 0xf);
-        if (t >= 0xA && t <= 0xF) {
-            out_buffer[1] = 'A' + t - 10; 
-        }else if (t >= 0 && t <= 9){
-            out_buffer[1] = '0' + t;
+        else
+        {
+            out_buffer[0] = '0' + high_nibble;
         }
+
+        const unsigned char low_nibble = (data & 0xf);
+
+        if( low_nibble >= 0xA && low_nibble <= 0xF )
+        {
+            out_buffer[1] = 'A' + low_nibble - 10; 
+        }
+        else if( low_nibble >= 0 && low_nibble <= 9 )
+        {
+            out_buffer[1] = '0' + low_nibble;
+        }
+
         out_buffer[2]=0;
 
         boxfill8(vram, xsize, COL8_C6C6C6,  0,         ysize - 28, xsize -  1, ysize - 28);
@@ -354,61 +350,65 @@ static void keyboard_handler(unsigned char data)
         boxfill8(vram, xsize, COL8_FFFFFF, xsize -  3, ysize - 24, xsize -  3, ysize -  3);
 
         putfont8_string(vram,xsize, 283, 180, COL8_00FF00,font.Bitmap , out_buffer);
-#endif
+
         return;
     }
     out_buffer[1] = 0;
 
-        
-    putfont8_string(vram,xsize, 0, 0, COL8_FFFFFF,font.Bitmap , out_buffer);
+    putfont8_string( vram, xsize, 0, 0, COL8_FFFFFF,font.Bitmap , out_buffer );
 
-    if (data == 0x30 || data == 0xB0) {
-        putfont8_string(vram,xsize, 8, 100, COL8_FFFFFF,font.Bitmap , (unsigned char *)"May the source be with you!");
+    if( data == 0x30 || data == 0xB0 )
+    {
+        putfont8_string( vram, xsize, 8, 100, COL8_FFFFFF, font.Bitmap, ( unsigned char* )"May the source be with you!" );
     }
 }
 
 void _inthandler21(int *esp)
 {
     unsigned char data;
-    io_out8(PIC0_COMMAND, 0x61);
-    data = io_in8(PORT_KEYDAT);
-		fifo_put(&key_fifo, data);
-		return;
+    io_out8( PIC0_COMMAND, 0x61 );
+    data = io_in8( PORT_KEYDAT );
+	fifo_put( &key_fifo, data );
 }
 
 static void mouse_handler(unsigned char data)
 {
     unsigned char *vram = VRAM_ADDR;
-    unsigned short xsize,ysize;
+    const unsigned short xsize = VGA_X_MAX;
+    const unsigned short ysize = VGA_Y_MAX;
 	char buffer[20];
-    xsize=320;
-    ysize=200;
-	if (mouse_status.phase == 0) {
-		if (data == 0xfa) {
-				mouse_status.phase = 1;
+	switch( mouse_status.phase )
+    {
+    case 0:
+		if( data == 0xfa )
+        {
+            mouse_status.phase = 1;
 		}
-		return ;
-	} else if (mouse_status.phase == 1) {
-		if ((data & 0xc8) == 0x08) {
+		break;
+    case 1:
+		if( ( data & 0xc8 ) == 0x08 )
+        {
 			mouse_status.buf[0] = data;
 			mouse_status.phase = 2;
 		}
-		return;
-	} else if (mouse_status.phase == 2) {
+		break;
+    case 2:
 		mouse_status.buf[1] = data;
 		mouse_status.phase = 3;
-		return ;
-	} else if (mouse_status.phase == 3) {
+        break;
+    case 3:
 		mouse_status.buf[2] = data;
 		mouse_status.phase = 1;
 		mouse_status.btn = mouse_status.buf[0] & 0x07;
 		mouse_status.x = mouse_status.buf[1];
 		mouse_status.y = mouse_status.buf[2];
 			
-		if ((mouse_status.buf[0] & 0x10) != 0) {
+		if( ( mouse_status.buf[0] & 0x10 ) != 0 )
+        {
 			mouse_status.x |= 0xffffff00;
 		}
-		if ((mouse_status.buf[0] & 0x20) != 0) {
+		if( ( mouse_status.buf[0] & 0x20 ) != 0 )
+        {
 			mouse_status.y |= 0xffffff00;
 		}
 		mouse_status.y = -mouse_status.y;
@@ -416,48 +416,52 @@ static void mouse_handler(unsigned char data)
 		//mouse_status.mx += mouse_status.x;
 		mouse_status.mx += mouse_status.x;
 		mouse_status.my += mouse_status.y;
-		if (mouse_status.mx < 0) {
+		if( mouse_status.mx < 0 )
+        {
 			mouse_status.mx = 0;
 		}
-		if (mouse_status.my < 0) {
+		if( mouse_status.my < 0 )
+        {
 			mouse_status.my = 0;
 		}
-		if (mouse_status.mx > xsize - 16) {
+		if( mouse_status.mx > xsize - 16 )
+        {
 			mouse_status.mx = xsize - 16;
 		}
-		if (mouse_status.my > ysize - 16) {
+		if( mouse_status.my > ysize - 16 )
+        {
 			mouse_status.my = ysize - 16;
 		}
 		draw_mouse_on_screen(&mouse_status);
-		return;
-	}
-	return;
+    default:
+        break;
+    }            
 }
 void _inthandler2c(int *esp)
 {   
-		unsigned char data;
-		io_out8(PIC1_OCW2, 0x64);
-		io_out8(PIC0_OCW2, 0x62);
-		data = io_in8(PORT_KEYDAT);
-		fifo_put(&mouse_fifo, data);
-		return;
+    unsigned char data;
+    io_out8(PIC1_OCW2, 0x64);
+    io_out8(PIC0_OCW2, 0x62);
+    data = io_in8(PORT_KEYDAT);
+    fifo_put(&mouse_fifo, data);
 }
 
 void _inthandler27(int *esp)
 {
     io_out8(PIC0_COMMAND, 0x67); /* IRQ-07<8e>ó<95>t<8a>®<97>¹<82>ðPIC<82>É<92>Ê<92>m(7-1<8e>Q<8f>Æ) */
-    return;
 }
-
 
 void kernelstart(char *arg)
 {
+    unsigned char keybuffer[32];
+    unsigned char mousebuffer[128];
+ 
     init_palette();
 
     init_gdtidt();
     init_pic();
-    fifo_init(&key_fifo, 32, keybuffer);
-	fifo_init(&mouse_fifo, 128, mousebuffer);
+    fifo_init( &key_fifo, sizeof( keybuffer ), keybuffer );
+	fifo_init( &mouse_fifo, sizeof( mousebuffer ) , mousebuffer );
     io_sti();
 
     io_out8(PIC0_DATA, 0xf9); /* PIC0<82>Æ<83>L<81>[<83>{<81>[<83>h<82>ð<8b><96><89>Â(11111001) */
@@ -467,25 +471,27 @@ void kernelstart(char *arg)
 
 	enable_mouse();
 
-    drawing_desktop();
+    draw_screen();
 
 	//draw_mouse_on_screen();
-    while(1) {
-		io_cli();
-		if (fifo_status(&key_fifo) <= 0 && fifo_status(&mouse_fifo) <= 0) {
-			io_stihlt();
-		} else {
-			if (fifo_status(&key_fifo) > 0) {
-				unsigned char data = fifo_get(&key_fifo);
-				io_sti();
-				keyboard_handler(data);
-			} else if (fifo_status(&mouse_fifo) > 0) {
-				unsigned char data = fifo_get(&mouse_fifo);
-				io_sti();
-				mouse_handler(data);
-			}
+    while( 1 ) /* Interruptions handler loop */
+    {
+		io_cli(); /* Disable ints */
+        if( fifo_status( &key_fifo ) > 0 ) /* If there are keyboard ints */
+        {
+            unsigned char data = fifo_get( &key_fifo );
+            io_sti();
+			keyboard_handler( data );
 		}
+        else if( fifo_status( &mouse_fifo ) > 0 ) /* If there are mouse ints */
+        {
+            unsigned char data = fifo_get( &mouse_fifo );
+			io_sti();
+			mouse_handler( data );
+		}
+        else /* If all keyboard and mouse ints are processed */
+        {
+            io_stihlt(); /* Enable ints and wait until next int appears */
+        }
 	}
-
-    return ; 
 }
