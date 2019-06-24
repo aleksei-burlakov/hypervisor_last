@@ -1,11 +1,6 @@
 #include "common.h"
 #include "fifo8.h"
 
-
-void enable_mouse(void);
-void init_keyboard(void);
-void keyboard_handler(unsigned char data);
-void mouse_handler(unsigned char data);
 extern char mcursor[256];
 
 struct wjn {
@@ -23,6 +18,7 @@ struct screen_postion {
     int x;
     int y;
 };
+
 struct screen_postion screen_pos = {
     .x = 0,
     .y = 20,
@@ -30,7 +26,32 @@ struct screen_postion screen_pos = {
 
 struct mouse_info mouse_status = {0};
 
-void init_gdtidt(void)
+static void set_segmdesc(struct SEGMENT_DESCRIPTOR *sd, unsigned int limit, int base, int ar)
+{
+    if (limit > 0xfffff) {
+        ar |= 0x8000; /* G_bit = 1 */
+        limit /= 0x1000;
+    }
+    sd->limit_low    = limit & 0xffff;
+    sd->base_low     = base & 0xffff;
+    sd->base_mid     = (base >> 16) & 0xff;
+    sd->access_right = ar & 0xff;
+    sd->limit_high   = ((limit >> 16) & 0x0f) | ((ar >> 8) & 0xf0);
+    sd->base_high    = (base >> 24) & 0xff;
+    return;
+}
+
+static void set_gatedesc(struct GATE_DESCRIPTOR *gd, int offset, int selector, int ar)
+{
+    gd->offset_low   = offset & 0xffff;
+    gd->selector     = selector;
+    gd->dw_count     = (ar >> 8) & 0xff;
+    gd->access_right = ar & 0xff;
+    gd->offset_high  = (offset >> 16) & 0xffff;
+    return;
+}
+
+static void init_gdtidt(void)
 {
     struct SEGMENT_DESCRIPTOR *gdt = (struct SEGMENT_DESCRIPTOR *) (ADR_GDT - (SYSSEG << 4));
     struct GATE_DESCRIPTOR    *idt = (struct GATE_DESCRIPTOR    *) (ADR_IDT - (SYSSEG << 4));
@@ -50,9 +71,7 @@ void init_gdtidt(void)
         set_gatedesc(idt + i, 0xfff, 0, 0);
     }
     load_idtr(LIMIT_IDT, ADR_IDT);
-
     
-
     set_gatedesc(idt + 0x21, (int) inthandler21, 2 * 8, AR_INTGATE32);
 #if 1
     /* IDT<82>Ì<90>Ý<92>è */
@@ -63,32 +82,17 @@ void init_gdtidt(void)
     return;
 }
 
-
-void set_segmdesc(struct SEGMENT_DESCRIPTOR *sd, unsigned int limit, int base, int ar)
+static void boxfill8(unsigned char *vram, int xsize, unsigned char c, int x0, int y0, int x1, int y1)
 {
-    if (limit > 0xfffff) {
-        ar |= 0x8000; /* G_bit = 1 */
-        limit /= 0x1000;
+    int x, y;
+    for (y = y0; y <= y1; y++) {
+        for (x = x0; x <= x1; x++)
+            vram[y * xsize + x] = c;
     }
-    sd->limit_low    = limit & 0xffff;
-    sd->base_low     = base & 0xffff;
-    sd->base_mid     = (base >> 16) & 0xff;
-    sd->access_right = ar & 0xff;
-    sd->limit_high   = ((limit >> 16) & 0x0f) | ((ar >> 8) & 0xf0);
-    sd->base_high    = (base >> 24) & 0xff;
     return;
 }
 
-void set_gatedesc(struct GATE_DESCRIPTOR *gd, int offset, int selector, int ar)
-{
-    gd->offset_low   = offset & 0xffff;
-    gd->selector     = selector;
-    gd->dw_count     = (ar >> 8) & 0xff;
-    gd->access_right = ar & 0xff;
-    gd->offset_high  = (offset >> 16) & 0xffff;
-    return;
-}
-void drawing_desktop()
+static void drawing_desktop()
 {
     unsigned char *vram = VRAM_ADDR;
     unsigned short xsize,ysize;
@@ -140,55 +144,8 @@ void drawing_desktop()
     putfont8_string(vram,xsize, 8, 8, COL8_FFFFFF,font.Bitmap , "Hack Week 0x10!!!");
     putfont8_string(vram,xsize, 8, 28, COL8_FFFFFF,font.Bitmap , buf);
 
-		//draw_mouse_on_screen(&mouse_status);
+	//draw_mouse_on_screen(&mouse_status);
 }
-
-void kernelstart(char *arg)
-{
-
-    init_palette();
-
-    init_gdtidt();
-    init_pic();
-		fifo_init(&key_fifo, 32, keybuffer);
-		fifo_init(&mouse_fifo, 128, mousebuffer);
-    io_sti();
-
-
-
-    io_out8(PIC0_DATA, 0xf9); /* PIC0<82>Æ<83>L<81>[<83>{<81>[<83>h<82>ð<8b><96><89>Â(11111001) */
-    io_out8(PIC1_DATA, 0xef); /* <83>}<83>E<83>X<82>ð<8b><96><89>Â(11101111) */
-
-		init_keyboard();
-
-		enable_mouse();
-
-
-
-    drawing_desktop();
-
-
-		//draw_mouse_on_screen();
-    while(1) {
-			io_cli();
-			if (fifo_status(&key_fifo) <= 0 && fifo_status(&mouse_fifo) <= 0)	{
-				io_stihlt();
-			}else {
-					if (fifo_status(&key_fifo) > 0) {
-						unsigned char data = fifo_get(&key_fifo);
-						io_sti();
-						keyboard_handler(data);
-					}else if (fifo_status(&mouse_fifo) > 0) {
-						unsigned char data = fifo_get(&mouse_fifo);
-						io_sti();
-						mouse_handler(data);
-					}
-			}
-		}
-
-    return ; 
-}
-
 
 #define PORT_KEYDAT				0x0060
 #define PORT_KEYSTA				0x0064
@@ -197,9 +154,9 @@ void kernelstart(char *arg)
 #define KEYCMD_WRITE_MODE		0x60
 #define KBC_MODE				0x47
 
-void wait_KBC_sendready(void)
+static void wait_KBC_sendready(void)
 {
-	/* 等待键盘控制电路准备完毕 */
+    /* Wait for the keyboard hardware to be ready */
 	for (;;) {
 		if ((io_in8(PORT_KEYSTA) & KEYSTA_SEND_NOTREADY) == 0) {
 			break;
@@ -208,9 +165,9 @@ void wait_KBC_sendready(void)
 	return;
 }
 
-void init_keyboard(void)
+static void init_keyboard(void)
 {
-	/* 初始化键盘控制电路 */
+    /* Initialize the keyboard hardware */
 	wait_KBC_sendready();
 	io_out8(PORT_KEYCMD, KEYCMD_WRITE_MODE);
 	wait_KBC_sendready();
@@ -221,9 +178,9 @@ void init_keyboard(void)
 #define KEYCMD_SENDTO_MOUSE		0xd4
 #define MOUSECMD_ENABLE			0xf4
 
-void enable_mouse(void)
+static void enable_mouse(void)
 {
-	/* 激活鼠标 */
+    /* Activate the mouse */
 //	unsigned char status;
 //	wait_KBC_sendready();
 //	io_out8(PORT_KEYCMD, 0x20);
@@ -243,24 +200,7 @@ void enable_mouse(void)
 	return; /* 顺利的话，键盘控制器会返回ACK(0xfa) */
 }
 
-#if 0
-void putfont8(char *vram, int xsize, int x, int y, char c, const unsigned char *font_bitmap)
-{
-    int i,j;
-    char *p, d /* data */;
-    for (i = 0; i < 16; i++) {
-        p = vram + (y + i) * xsize + x;
-        for(j=0;j<8;j++) {
-            if(font_bitmap[i*8+j]=='X') {
-                p[j]=c;
-            }
-        }
-    }
-    return;
-}
-#endif
-
-void putfont8(char *vram, int xsize, int x, int y, char c, const unsigned char *font_bitmap)
+static void putfont8(char *vram, int xsize, int x, int y, char c, const unsigned char *font_bitmap)
 {
     int i;
     char *p, d /* data */;
@@ -283,15 +223,8 @@ void putfont8(char *vram, int xsize, int x, int y, char c, const unsigned char *
 void putfont8_string(unsigned char *vram, int xsize, int x, int y, char color,const unsigned char *font_bitmap, unsigned char * string)
 {
     char ch ;
-    int x1,y1;
-    if (x == 0)
-        x1 = screen_pos.x;
-    else
-        x1 = x;
-    if (y == 0)
-        y1 = screen_pos.y;
-    else
-        y1 = y;
+    int x1 = x ? x : screen_pos.x;
+    int y1 = y ? y : screen_pos.y;
 
     for (;y1<190;y1+=30) {
         for (;x1<310;x1+=10) {
@@ -311,11 +244,9 @@ void putfont8_string(unsigned char *vram, int xsize, int x, int y, char color,co
         }
     }
     //screen_pos.y += 1;
-
 }
 
-
-void set_palette(int start, int end, unsigned char *rgb)
+static void set_palette(int start, int end, unsigned char *rgb)
 {
     int i, eflags;
     io_out8(0x03c8, start);
@@ -328,7 +259,7 @@ void set_palette(int start, int end, unsigned char *rgb)
     return;
 }
 
-void init_palette(void)
+static void init_palette(void)
 {
     static unsigned char table_rgb[16 * 3] = {
         0x00, 0x00, 0x00,   /*  0:*/
@@ -354,27 +285,13 @@ void init_palette(void)
     /* static char <96>$<97>ß<82>Í<81>A<83>f<81>[<83>^<82>É<82>µ<82>©<8e>g<82>¦<82>È<82>¢<82>¯<82>ÇDB<96>$<97>ß<91><8a><93><96> */
 }
 
-
-void boxfill8(unsigned char *vram, int xsize, unsigned char c, int x0, int y0, int x1, int y1)
+static void init_pic(void)
 {
-    int x, y;
-    for (y = y0; y <= y1; y++) {
-        for (x = x0; x <= x1; x++)
-            vram[y * xsize + x] = c;
-    }
-    return;
-}
-
-
-void init_pic(void)
-{
-
     io_out8(PIC1_OCW1,  0xFF); 
     io_out8(PIC0_OCW1,  0xFF); 
 
     io_out8(PIC0_COMMAND,   0x11);
     io_out8(PIC1_COMMAND,   0x11);
-
 
     io_out8(PIC1_DATA, 0x28  );
     io_out8(PIC0_DATA, 0x20  );
@@ -393,7 +310,7 @@ void init_pic(void)
 
 
 #define PORT_KEYDAT 0x0060
-void keyboard_handler(unsigned char data)
+static void keyboard_handler(unsigned char data)
 {
     unsigned char *vram = VRAM_ADDR;
     unsigned short xsize,ysize;
@@ -459,62 +376,62 @@ void _inthandler21(int *esp)
 		return;
 }
 
-void mouse_handler(unsigned char data)
+static void mouse_handler(unsigned char data)
 {
     unsigned char *vram = VRAM_ADDR;
     unsigned short xsize,ysize;
-		char buffer[20];
+	char buffer[20];
     xsize=320;
     ysize=200;
-		if (mouse_status.phase == 0) {
-			if (data == 0xfa) {
-					mouse_status.phase = 1;
-			}
-			return ;
-		}else if (mouse_status.phase == 1) {
-			if ((data & 0xc8) == 0x08) {
-				mouse_status.buf[0] = data;
-				mouse_status.phase = 2;
-			}
-			return;
-		}else if (mouse_status.phase == 2) {
-			mouse_status.buf[1] = data;
-			mouse_status.phase = 3;
-			return ;
-		}else if (mouse_status.phase == 3) {
-			mouse_status.buf[2] = data;
-			mouse_status.phase = 1;
-			mouse_status.btn = mouse_status.buf[0] & 0x07;
-			mouse_status.x = mouse_status.buf[1];
-			mouse_status.y = mouse_status.buf[2];
-			
-			if ((mouse_status.buf[0] & 0x10) != 0) {
-				mouse_status.x |= 0xffffff00;
-			}
-			if ((mouse_status.buf[0] & 0x20) != 0) {
-				mouse_status.y |= 0xffffff00;
-			}
-			mouse_status.y = -mouse_status.y;
-			boxfill8(VRAM_ADDR, xsize, COL8_008484, mouse_status.mx, mouse_status.my, mouse_status.mx + 15, mouse_status.my + 15);
-			//mouse_status.mx += mouse_status.x;
-			mouse_status.mx += mouse_status.x;
-			mouse_status.my += mouse_status.y;
-			if (mouse_status.mx < 0) {
-				mouse_status.mx = 0;
-			}
-			if (mouse_status.my < 0) {
-				mouse_status.my = 0;
-			}
-			if (mouse_status.mx > xsize - 16) {
-				mouse_status.mx = xsize - 16;
-			}
-			if (mouse_status.my > ysize - 16) {
-				mouse_status.my = ysize - 16;
-			}
-			draw_mouse_on_screen(&mouse_status);
-			return;
+	if (mouse_status.phase == 0) {
+		if (data == 0xfa) {
+				mouse_status.phase = 1;
+		}
+		return ;
+	} else if (mouse_status.phase == 1) {
+		if ((data & 0xc8) == 0x08) {
+			mouse_status.buf[0] = data;
+			mouse_status.phase = 2;
 		}
 		return;
+	} else if (mouse_status.phase == 2) {
+		mouse_status.buf[1] = data;
+		mouse_status.phase = 3;
+		return ;
+	} else if (mouse_status.phase == 3) {
+		mouse_status.buf[2] = data;
+		mouse_status.phase = 1;
+		mouse_status.btn = mouse_status.buf[0] & 0x07;
+		mouse_status.x = mouse_status.buf[1];
+		mouse_status.y = mouse_status.buf[2];
+			
+		if ((mouse_status.buf[0] & 0x10) != 0) {
+			mouse_status.x |= 0xffffff00;
+		}
+		if ((mouse_status.buf[0] & 0x20) != 0) {
+			mouse_status.y |= 0xffffff00;
+		}
+		mouse_status.y = -mouse_status.y;
+		boxfill8(VRAM_ADDR, xsize, COL8_008484, mouse_status.mx, mouse_status.my, mouse_status.mx + 15, mouse_status.my + 15);
+		//mouse_status.mx += mouse_status.x;
+		mouse_status.mx += mouse_status.x;
+		mouse_status.my += mouse_status.y;
+		if (mouse_status.mx < 0) {
+			mouse_status.mx = 0;
+		}
+		if (mouse_status.my < 0) {
+			mouse_status.my = 0;
+		}
+		if (mouse_status.mx > xsize - 16) {
+			mouse_status.mx = xsize - 16;
+		}
+		if (mouse_status.my > ysize - 16) {
+			mouse_status.my = ysize - 16;
+		}
+		draw_mouse_on_screen(&mouse_status);
+		return;
+	}
+	return;
 }
 void _inthandler2c(int *esp)
 {   
@@ -532,3 +449,43 @@ void _inthandler27(int *esp)
     return;
 }
 
+
+void kernelstart(char *arg)
+{
+    init_palette();
+
+    init_gdtidt();
+    init_pic();
+    fifo_init(&key_fifo, 32, keybuffer);
+	fifo_init(&mouse_fifo, 128, mousebuffer);
+    io_sti();
+
+    io_out8(PIC0_DATA, 0xf9); /* PIC0<82>Æ<83>L<81>[<83>{<81>[<83>h<82>ð<8b><96><89>Â(11111001) */
+    io_out8(PIC1_DATA, 0xef); /* <83>}<83>E<83>X<82>ð<8b><96><89>Â(11101111) */
+
+	init_keyboard();
+
+	enable_mouse();
+
+    drawing_desktop();
+
+	//draw_mouse_on_screen();
+    while(1) {
+		io_cli();
+		if (fifo_status(&key_fifo) <= 0 && fifo_status(&mouse_fifo) <= 0) {
+			io_stihlt();
+		} else {
+			if (fifo_status(&key_fifo) > 0) {
+				unsigned char data = fifo_get(&key_fifo);
+				io_sti();
+				keyboard_handler(data);
+			} else if (fifo_status(&mouse_fifo) > 0) {
+				unsigned char data = fifo_get(&mouse_fifo);
+				io_sti();
+				mouse_handler(data);
+			}
+		}
+	}
+
+    return ; 
+}
