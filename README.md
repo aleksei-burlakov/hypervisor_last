@@ -36,8 +36,10 @@ In order to start it your system must support graphics. If you connect remotelly
 
 To compile the project do
 
-$ zypper in -y glibc-devel-32bit
+~~~~
+$ zypper in -y glibc-devel-32bit qemu-kvm
 $ make
+~~~~
 
 ### How to run ###
 
